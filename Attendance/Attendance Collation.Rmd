@@ -30,9 +30,6 @@ full_dataset <- data.frame(
 
 ## MAKE MANUAL CHANGES HERE: Filepath and Working Directory
 ```{r}
-# CHANGE ME: Change to the folder that has this file as well as the RIT datafile
-setwd("~/Refugee_and_Immigrant/attendance_interactive")
-
 # CHANGE ME: filepath to data
 path <- "~/Downloads/OLD RIT-SFI School Day Tutor Log [August 17, 2020-April 21, 2021] (1).xlsx"
 ```
