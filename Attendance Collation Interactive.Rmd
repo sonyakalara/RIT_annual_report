@@ -1,0 +1,168 @@
+---
+title: "Attendance Collation FINALIZED"
+author: "Sonya Kalara"
+date: "7/6/2021"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Download libraries if they aren't already loaded
+libs <- c("tidyverse", "readxl", "stringr", "data.table", "janitor", "base", "formattable")
+
+for (i in libs){
+  if( !is.element(i, .packages(all.available = TRUE)) ) {
+    install.packages(i)
+  }
+  library(i,character.only = TRUE)
+}
+
+# Create empty dataset
+full_dataset <- data.frame(
+  student_name = character(),
+  semester = character(),
+  full_time = numeric(),
+  type = character(),
+  assoc_staff_member = character()
+)
+```
+
+
+## MAKE MANUAL CHANGES HERE: Filepath and Working Directory
+```{r}
+# CHANGE ME: Change to the folder that has this file as well as the RIT datafile
+setwd("~/Refugee_and_Immigrant/attendance_interactive")
+
+# CHANGE ME: filepath to data
+path <- "~/Downloads/OLD RIT-SFI School Day Tutor Log [August 17, 2020-April 21, 2021] (1).xlsx"
+```
+
+
+# Captures Names of Relevant Excel Files (only Push-In)
+```{r}
+# Capture all excel sheet names
+all_names <- path %>%
+  excel_sheets() 
+
+# Create IDs for each column of the excel sheet names
+all_names <- as.data.table(all_names) %>% 
+  rowid_to_column(var = "index")
+
+# Extract push-in sheets, drop Master sheet
+all_push <- all_names[str_detect(all_names, "Push"), ] 
+all_push <- as.data.frame(all_push)
+all_push$first_name <- gsub("([A-Za-z]+).*", "\\1", all_push$all_names)
+all_push <- all_push %>% 
+  filter(first_name != "Master") 
+  
+# Total number of push-in staff
+total <- nrow(all_push)
+
+manual_all_push_index <- all_push %>% 
+  rowid_to_column("row_number") %>% 
+  select(-index) %>% 
+  rename(sheet_name = all_names)
+
+formattable(manual_all_push_index, 
+            align =c("l","l","l"), 
+            list(row_number = formatter(
+            "span", style = ~ style(color = "grey",font.weight = "bold"))))
+
+# View(manual_all_push_index)
+```
+
+
+The number of successful pages read by the system will be counted below. If there appears to be an error, and the program has printed up until the number 19, the 19th page is causing an issue and should be checked. In order to identify which person corresponds to the 19th page, look at the dataset 'manual_all_push_index' and go the 19th row.
+
+# Loop to Extract Information
+```{r warning = FALSE, message=FALSE}
+
+paste0("The values should count from 1 to ", total, ":")
+
+# Iterates through each staff member
+for (val in 1:total) {
+  
+  print(val)
+  
+  suppressMessages(
+  # Reads the excel sheet corresponding to staff member x
+  data <- read_excel(path, sheet = all_push$index[val], col_names = TRUE))
+  
+  # Drops unneeded data
+  data <- data %>% 
+    rename(student_name = ...2)
+  
+  data <- data[,!grepl("\\...", names(data))]
+  
+  not_all_na <- function(x) {!all(is.na(x))}
+  
+  # Categorizes data, makes calculations of reported time / day
+  data_long <- data[str_detect(data$student_name, ","), ]  %>% 
+    filter(!is.na(student_name)) %>% 
+    select_if(not_all_na) %>% 
+    gather(key = "date", value = "attendance", -student_name) %>% 
+    mutate(attendance = ifelse(is.na(attendance), 0, attendance),
+           attendance = as.double(attendance),
+           semester = ifelse(date < 44197, "fall", "spring"),
+           date = as.Date(as.integer(date), origin = "1899-12-30"),
+           full_time = 0.75*attendance) 
+  
+  # Totals across semester
+  data_summarized <- data_long %>% 
+    group_by(student_name, semester) %>% 
+    mutate(full_time = sum(full_time)) %>% 
+    select(student_name, semester, full_time) %>% 
+    unique() %>% 
+    mutate(type = "student") %>% 
+    mutate(assoc_staff_member = all_push$first_name[val])
+  
+  # Calculates information for staff members
+  just_staff <- data[1,] %>% 
+    mutate(student_name = all_push$first_name[val],
+           assoc_staff_member = "self") %>% 
+    gather(key = "date", value = "attendance", -student_name, -assoc_staff_member) %>% 
+    mutate(attendance = as.double(attendance),
+           attendance = ifelse(is.na(attendance) | is.character(attendance), 0, attendance),
+           semester = ifelse(date < 44197, "fall", "spring"),
+           date = as.Date(as.integer(date), origin = "1899-12-30")) %>% 
+    rename(full_time = attendance) %>% 
+    group_by(student_name, semester) %>% 
+    mutate(full_time = sum(full_time)) %>% 
+    select(student_name, semester, full_time, assoc_staff_member) %>% 
+    unique() %>% 
+    mutate(type = "staff")
+  
+  # Appends local datasets to master dataset
+  if (val == 1){
+    full_dataset <- data_summarized
+  } else {
+    full_dataset <- rbind(full_dataset, data_summarized)
+  }
+  full_dataset <- rbind(full_dataset, just_staff)
+}
+```
+
+# Completed
+```{r}
+# Uses master dataset and reshapes data such that spring and fall are columns
+# Sums across both semesters 
+# Eliminates all with 0 in both semesters
+reformed <- full_dataset %>% 
+  select(-assoc_staff_member) %>% 
+  group_by(student_name, semester) %>% 
+  mutate(full_time = sum(full_time)) %>% 
+  unique() %>% 
+  spread(semester, full_time) %>% 
+  mutate(fall = ifelse(is.na(fall), 0, fall),
+         spring = ifelse(is.na(spring), 0, spring)) %>% 
+  mutate(total_bothsem = fall + spring) %>% 
+  filter(total_bothsem != 0)
+
+reshaped <- reformed %>% 
+  select(-total_bothsem) %>% 
+  gather(-student_name, -type, key = "semester", value = "hours") %>% 
+  filter(hours > 0)
+  
+write.csv(reshaped, "full_year_attendance_by_semester.csv")
+```
+
