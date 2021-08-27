@@ -6,7 +6,6 @@ output: html_document
 ---
 # Library Install
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
 
 # Download libraries if they aren't already loaded
 libs <- c("tidyverse", "readxl", "stringr", "data.table", "janitor", "base", "formattable", "fuzzyjoin")
@@ -51,7 +50,7 @@ needsmatch_wo_csid[is.na(needsmatch_wo_csid)] <- "empty"
 # If the two datasets "needsmatch_wo_csid" and "master" have different names for the column with the information to be fuzzy matched, change the by = c("full_name" = "full_name") to reflect the correct column titles. For example, if the needsmatch had "full_name" and the master had "Full Name", this line would be written: by = c("full_name" = `Full Name`)
 
 # This code will take a long time to run
-joined <- stringdist_left_join(needsmatch_wo_csid, master, by = c("full_name" = "full_name"), method = "jaccard", distance_col = "simil")
+joined <- stringdist_left_join(needsmatch_wo_csid, master, by = c("full_name" = "full_name"), method = "jaccard", max_dist = 0.5, distance_col = "simil")
 
 # This dataset will select the row in "master" that has the most linguistic similarity to the name in "needsmatch". The smaller the 'simil' column number is, the more similar the two names are.
 joined_fil <- joined %>% 
